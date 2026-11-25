@@ -1,0 +1,2 @@
+# Keep frozen source, profiles and fixtures byte-for-byte across checkouts.
+* -text

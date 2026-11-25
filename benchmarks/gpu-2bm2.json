@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "name": "public-2bm2",
+  "timeout_s": 240,
+  "settings": {
+    "thread": 8000,
+    "seed": 20261012,
+    "rilc_bfgs": 1,
+    "num_modes": 9,
+    "energy_range": 3
+  },
+  "sources": {
+    "2bm2": "DeltaGroupNJUPT/Vina-GPU-2.1@180272b8a5265d6ed9664178345933cebe2cd349"
+  },
+  "inputs_sha256": {
+    "examples/gpu-2bm2/2bm2_protein.pdbqt": "c6676f0766cfaa4bcca747edc2d4c6171667f0f5bbf5fc6d8ca46d39609d0e3a",
+    "examples/gpu-2bm2/2bm2_ligand.pdbqt": "b225982206a300c6b88d1a39f7acfc64bd465730ae77c24cf59275ae8c399761"
+  },
+  "cases": [
+    {
+      "receptor": "examples/gpu-2bm2/2bm2_protein.pdbqt",
+      "center": [
+        40.415,
+        110.986,
+        82.673
+      ],
+      "size": [
+        30.0,
+        30.0,
+        30.0
+      ],
+      "id": "upstream-single-thread-1000",
+      "ligand": "examples/gpu-2bm2/2bm2_ligand.pdbqt",
+      "settings": {
+        "thread": 1000
+      },
+      "expected": {
+        "output_files": [
+          "docked.pdbqt"
+        ],
+        "models_per_file": [
+          1,
+          9
+        ]
+      }
+    }
+  ]
+}

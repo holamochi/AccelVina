@@ -1,0 +1,37 @@
+{
+  "suite": "final",
+  "result_sha256": "1c9ff20c322057f2937bf3e523e4a523f0d50781e1e4d6fc18ad0f5f51736262",
+  "suite_sha256": "0f9721493635119c71b00e2aedaa3f43ba2c8a37378bd1a2e8dd2121fdffb0d9",
+  "reference_sha256": "f5958e96146104a98172c79afafbea7bdc7ec0f9f65d098e7a549275442c82f7",
+  "started_utc": "2026-11-23T12:40:36.800390+00:00",
+  "ended_utc": "2026-11-23T21:46:06.620718+08:00",
+  "total_cases": 25,
+  "same_card_matched_cases": 25,
+  "raw_validation": true,
+  "counts": {
+    "runs": 150,
+    "files_checked": 156,
+    "pose_rows_checked": 1356,
+    "a100_matching_runs": 0
+  },
+  "cross_a100_all_runs_matched_cases": {
+    "baseline": 0,
+    "candidate": 0
+  },
+  "observations": 1901,
+  "valid_observations": 1901,
+  "unexpected_gpu_process_samples": 0,
+  "sampled_peak_process_vram_mib": {
+    "baseline": 3542,
+    "candidate": 620
+  },
+  "versions": {
+    "baseline": "f94a2c4ade96dbe3c75a5c962ac61ea119db5bb73b2dfd4791888ef84322b709",
+    "candidate": "88dc8708e255b3f72da488e5ab1208048f3890f13a7066700d9bd0cfce6c2a39"
+  },
+  "sum_case_medians_s": {
+    "baseline": 1181.2357434190344,
+    "candidate": 128.22006441676058
+  },
+  "speedup": 9.212565512208762
+}

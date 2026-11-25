@@ -1,0 +1,6 @@
+/.build/
+/cpu/build/
+/cpu/rebuilds/
+/gpu-opencl/build/
+__pycache__/
+.DS_Store

@@ -1,0 +1,1764 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AutoDock Vina 多平台优化报告</title>
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --surface: #ffffff;
+      --surface-subtle: #f8fafc;
+      --surface-warm: #fcfbfa;
+      --ink: #16202a;
+      --ink-secondary: #3b4a59;
+      --ink-muted: #5d6d7e;
+      --border: #dde4ec;
+      --border-strong: #c6d1de;
+      --accent: #1b4d7e;
+      --accent-soft: #eaf2fa;
+      --accent-mid: #3a73aa;
+      --cpu: #1b4d7e;
+      --cpu-bg: #edf4fb;
+      --a100: #1b6b4a;
+      --a100-bg: #eaf6f0;
+      --s5000: #8c441e;
+      --s5000-bg: #fcf2eb;
+      --warn: #8a5315;
+      --warn-bg: #fdf6ec;
+      --warn-border: #ead2b0;
+      --fail: #8f2d2d;
+      --fail-bg: #fdf0f0;
+      --fail-border: #ebc5c5;
+      --radius-lg: 14px;
+      --radius-md: 10px;
+      --radius-sm: 6px;
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+      --shadow-md: 0 6px 20px rgba(15, 23, 42, 0.06);
+      --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--font-sans);
+      font-size: 15px;
+      line-height: 1.75;
+      overflow-x: clip;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: underline;
+      text-decoration-color: rgba(27, 77, 126, 0.35);
+      text-underline-offset: 3px;
+      transition: color 0.15s ease, text-decoration-color 0.15s ease;
+    }
+
+    a:hover,
+    a:focus-visible {
+      color: #103357;
+      text-decoration-color: currentColor;
+    }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.87em;
+      background: #eef3f8;
+      color: #1a3550;
+      padding: 0.12em 0.42em;
+      border-radius: 4px;
+      overflow-wrap: break-word;
+    }
+
+    td code {
+      white-space: nowrap;
+    }
+
+    .page {
+      width: 100%;
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 28px 20px 64px;
+    }
+
+    /* Header */
+    .report-header {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-top: 4px solid var(--accent);
+      border-radius: var(--radius-lg);
+      padding: 28px 32px 26px;
+      box-shadow: var(--shadow-md);
+      margin-bottom: 22px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      color: var(--accent);
+      background: var(--accent-soft);
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 12px;
+    }
+
+    .report-title {
+      margin: 0 0 10px;
+      font-size: clamp(24px, 3.2vw, 32px);
+      line-height: 1.25;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+      color: var(--ink);
+    }
+
+    .report-subtitle {
+      margin: 0 0 22px;
+      color: var(--ink-secondary);
+      font-size: 15px;
+      max-width: 72ch;
+    }
+
+    /* Overview KPI Cards */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .kpi-card {
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .kpi-card--cpu { border-top: 3px solid var(--cpu); }
+    .kpi-card--a100 { border-top: 3px solid var(--a100); }
+    .kpi-card--s5000 { border-top: 3px solid var(--s5000); }
+
+    .kpi-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .platform-tag {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+      line-height: 1.5;
+    }
+
+    .platform-tag--cpu { color: var(--cpu); background: var(--cpu-bg); }
+    .platform-tag--a100 { color: var(--a100); background: var(--a100-bg); }
+    .platform-tag--s5000 { color: var(--s5000); background: var(--s5000-bg); }
+
+    .kpi-scope {
+      font-size: 12px;
+      color: var(--ink-muted);
+    }
+
+    .kpi-main {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .kpi-value {
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1.1;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02em;
+    }
+
+    .kpi-card--cpu .kpi-value { color: var(--cpu); }
+    .kpi-card--a100 .kpi-value { color: var(--a100); }
+    .kpi-card--s5000 .kpi-value { color: var(--s5000); }
+
+    .kpi-label {
+      font-size: 13px;
+      color: var(--ink-secondary);
+      font-weight: 500;
+    }
+
+    .kpi-bar {
+      width: 100%;
+      height: 6px;
+      background: #e4eaf1;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .kpi-bar > span {
+      display: block;
+      height: 100%;
+      border-radius: 999px;
+    }
+
+    .kpi-card--cpu .kpi-bar > span { background: var(--cpu); }
+    .kpi-card--a100 .kpi-bar > span { background: var(--a100); }
+    .kpi-card--s5000 .kpi-bar > span { background: var(--s5000); }
+
+    .kpi-meta {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: var(--ink-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .kpi-meta li + li {
+      margin-top: 3px;
+    }
+
+    .kpi-meta strong {
+      color: var(--ink);
+      font-weight: 600;
+    }
+
+    /* TOC */
+    .toc-nav {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 18px 24px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .toc-title {
+      margin: 0 0 12px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      color: var(--ink-muted);
+      text-transform: uppercase;
+    }
+
+    .toc-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .toc-item {
+      min-width: 0;
+    }
+
+    .toc-link {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 10px 12px;
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      text-decoration: none;
+      color: var(--ink);
+      height: 100%;
+      transition: border-color 0.15s ease, background-color 0.15s ease;
+    }
+
+    .toc-link:hover,
+    .toc-link:focus-visible {
+      border-color: var(--accent-mid);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .toc-num {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .toc-name {
+      font-size: 13.5px;
+      font-weight: 600;
+      line-height: 1.35;
+    }
+
+    .toc-sublinks {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      font-size: 12.5px;
+    }
+
+    .toc-sublabel {
+      color: var(--ink-muted);
+      font-weight: 600;
+      margin-right: 2px;
+    }
+
+    .toc-pill {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 999px;
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      color: var(--ink-secondary);
+      text-decoration: none;
+      line-height: 1.6;
+    }
+
+    .toc-pill:hover,
+    .toc-pill:focus-visible {
+      border-color: var(--accent-mid);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    /* Sections */
+    .report-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 28px 32px;
+      margin-bottom: 22px;
+      box-shadow: var(--shadow-sm);
+      scroll-margin-top: 16px;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      padding-bottom: 12px;
+      margin-bottom: 18px;
+      border-bottom: 2px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .section-num {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      background: var(--accent-soft);
+      padding: 2px 8px;
+      border-radius: 5px;
+      flex-shrink: 0;
+    }
+
+    .report-section h2 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.3;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .report-section h3 {
+      margin: 26px 0 12px;
+      padding-left: 11px;
+      border-left: 3px solid var(--accent);
+      font-size: 17px;
+      line-height: 1.4;
+      font-weight: 700;
+      color: var(--ink);
+      scroll-margin-top: 16px;
+    }
+
+    .report-section h3:first-of-type {
+      margin-top: 20px;
+    }
+
+    .report-section h4 {
+      margin: 22px 0 10px;
+      font-size: 15.5px;
+      line-height: 1.45;
+      font-weight: 700;
+      color: #1f3347;
+      scroll-margin-top: 16px;
+    }
+
+    p {
+      margin: 0 0 12px;
+      color: var(--ink);
+    }
+
+    p:last-child {
+      margin-bottom: 0;
+    }
+
+    ul, ol {
+      margin: 0 0 14px;
+      padding-left: 22px;
+    }
+
+    li {
+      margin-bottom: 8px;
+    }
+
+    li:last-child {
+      margin-bottom: 0;
+    }
+
+    /* Callouts / Notes */
+    .note-box {
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent-mid);
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      margin: 14px 0;
+      font-size: 14px;
+      color: var(--ink-secondary);
+    }
+
+    .note-box p {
+      color: inherit;
+    }
+
+    .note-box--warn {
+      background: var(--warn-bg);
+      border-color: var(--warn-border);
+      border-left-color: var(--warn);
+      color: #5b3811;
+    }
+
+    .sub-block {
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 16px 20px;
+      margin: 14px 0 18px;
+    }
+
+    .sub-block > h4:first-child {
+      margin-top: 0;
+    }
+
+    .sub-block--fail {
+      background: var(--fail-bg);
+      border-color: var(--fail-border);
+      border-left: 4px solid var(--fail);
+    }
+
+    .sub-block--fail h4 {
+      color: var(--fail);
+    }
+
+    /* Blockquotes */
+    blockquote {
+      margin: 12px 0 14px;
+      padding: 13px 18px;
+      background: var(--surface-warm);
+      border: 1px solid var(--border);
+      border-left: 3.5px solid var(--accent);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      color: var(--ink-secondary);
+      font-size: 14.2px;
+      line-height: 1.72;
+    }
+
+    blockquote p {
+      color: inherit;
+      margin-bottom: 8px;
+    }
+
+    blockquote p:last-child {
+      margin-bottom: 0;
+    }
+
+    /* Prompt Grid / Cards */
+    .prompt-card {
+      padding: 14px 0 16px;
+      border-bottom: 1px solid #edf1f6;
+    }
+
+    .prompt-card:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .prompt-card > h3 {
+      margin-top: 0;
+    }
+
+    /* Reference Link Strip */
+    .ref-links {
+      display: inline-flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      margin-left: 4px;
+    }
+
+    .ref-sep {
+      color: var(--ink-muted);
+      user-select: none;
+    }
+
+    /* Tables */
+    .table-wrap {
+      width: 100%;
+      max-width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--surface);
+      margin: 14px 0 16px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.8px;
+      line-height: 1.55;
+      font-variant-numeric: tabular-nums;
+    }
+
+    thead th {
+      background: #f1f5f9;
+      color: #243447;
+      font-weight: 700;
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1.5px solid var(--border-strong);
+      white-space: nowrap;
+    }
+
+    tbody td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #e9eef4;
+      vertical-align: top;
+      color: var(--ink);
+    }
+
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    tbody tr:nth-child(even) td {
+      background: #fafcff;
+    }
+
+    tbody tr.row-highlight td {
+      background: #eef5fc;
+    }
+
+    tbody tr.row-highlight--a100 td {
+      background: #edf7f2;
+    }
+
+    tbody tr.row-highlight--s5000 td {
+      background: #fcf3ec;
+    }
+
+    th.num,
+    td.num {
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    td.col-nowrap {
+      white-space: nowrap;
+    }
+
+    td.col-wide {
+      min-width: 210px;
+    }
+
+    td.col-prompt {
+      min-width: 260px;
+    }
+
+    .table-compact {
+      font-size: 13.2px;
+    }
+
+    .table-compact thead th,
+    .table-compact tbody td {
+      padding: 9px 10px;
+    }
+
+    .table-compact td.col-verify {
+      min-width: 155px;
+    }
+
+    .table-compact td.col-platform {
+      min-width: 135px;
+    }
+
+    .table-compact td.col-ver {
+      min-width: 120px;
+    }
+
+    /* Inline CSS Metric Bars */
+    .metric-bar-cell {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+      min-width: 84px;
+    }
+
+    .bar-track {
+      display: block;
+      width: 84px;
+      height: 5px;
+      background: #e3eaf2;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      display: block;
+      height: 100%;
+      background: var(--accent-mid);
+      border-radius: 999px;
+      min-width: 2px;
+    }
+
+    .bar-fill--cpu { background: var(--cpu); }
+    .bar-fill--a100 { background: var(--a100); }
+    .bar-fill--s5000 { background: var(--s5000); }
+
+    .table-hint {
+      font-size: 12px;
+      color: var(--ink-muted);
+      margin: -10px 0 14px;
+      display: none;
+    }
+
+    /* Ordered Steps */
+    .step-list {
+      list-style: none;
+      padding-left: 0;
+      margin: 12px 0 16px;
+      counter-reset: step-counter;
+    }
+
+    .step-list > li {
+      position: relative;
+      padding: 12px 16px 12px 46px;
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-bottom: 10px;
+      counter-increment: step-counter;
+    }
+
+    .step-list > li::before {
+      content: counter(step-counter);
+      position: absolute;
+      left: 14px;
+      top: 12px;
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+
+    .step-list--a100 > li::before { background: var(--a100); }
+    .step-list--s5000 > li::before { background: var(--s5000); }
+
+    /* Footer */
+    .report-footer {
+      text-align: center;
+      color: var(--ink-muted);
+      font-size: 12.5px;
+      padding: 12px 8px 0;
+    }
+
+    .report-footer a {
+      color: var(--ink-secondary);
+    }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .kpi-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .toc-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 640px) {
+      .page {
+        padding: 14px 12px 44px;
+      }
+
+      .report-header,
+      .report-section {
+        padding: 20px 16px;
+        border-radius: var(--radius-md);
+      }
+
+      .toc-nav {
+        padding: 14px 16px;
+        border-radius: var(--radius-md);
+      }
+
+      .toc-list {
+        grid-template-columns: 1fr;
+      }
+
+      .report-section h2 {
+        font-size: 19px;
+      }
+
+      .report-section h3 {
+        font-size: 15.5px;
+      }
+
+      .kpi-value {
+        font-size: 24px;
+      }
+
+      .table-hint {
+        display: block;
+      }
+
+      .step-list > li {
+        padding: 11px 12px 11px 40px;
+      }
+
+      .step-list > li::before {
+        left: 11px;
+      }
+    }
+
+    @media print {
+      body {
+        background: #ffffff;
+        font-size: 12.5px;
+      }
+
+      .page {
+        max-width: none;
+        padding: 0;
+      }
+
+      .report-header,
+      .toc-nav,
+      .report-section {
+        box-shadow: none;
+        border-color: #cbd5e1;
+        break-inside: avoid-page;
+      }
+
+      .table-wrap {
+        overflow: visible;
+      }
+
+      .kpi-card,
+      blockquote,
+      .sub-block,
+      .step-list > li {
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="report-header" id="top">
+      <div class="eyebrow">AutoDock Vina 性能优化研究报告 · CPU / A100 / S5000</div>
+      <h1 class="report-title">AutoDock Vina 多平台优化报告</h1>
+      <p class="report-subtitle">我们分别在 CPU、NVIDIA A100 和摩尔线程 S5000 上优化了 AutoDock Vina 的对接耗时。以下概览卡片按各平台各自基线与测量范围摘录原始结果，完整口径与校验详情见正文各节。</p>
+
+      <div class="kpi-grid" aria-label="三平台最佳结果概览">
+        <article class="kpi-card kpi-card--cpu">
+          <div class="kpi-head">
+            <span class="platform-tag platform-tag--cpu">Intel Xeon Platinum 8362 CPU</span>
+            <span class="kpi-scope">19 个完整对接配置</span>
+          </div>
+          <div class="kpi-main">
+            <span class="kpi-value">43.82%</span>
+            <span class="kpi-label">耗时减少</span>
+          </div>
+          <div class="kpi-bar" aria-hidden="true"><span style="width: 43.82%"></span></div>
+          <ul class="kpi-meta">
+            <li><strong>最快版本：</strong>CPU C11 优化版（GPT-6.2 Astra 主会话）</li>
+            <li><strong>端到端耗时：</strong>3445.941 → 1936.001 秒（对比上游 AutoDock-Vina）</li>
+            <li><strong>最高观测 RSS：</strong>828.30 → 418.57 MiB（减少 <strong>49.47%</strong>，第 2、3 轮）</li>
+            <li><strong>输出校验：</strong>该版 75/75 次通过，8 版合计 600/600 次</li>
+          </ul>
+        </article>
+
+        <article class="kpi-card kpi-card--a100">
+          <div class="kpi-head">
+            <span class="platform-tag platform-tag--a100">NVIDIA A100-SXM4-80GB</span>
+            <span class="kpi-scope">25 个最终用例</span>
+          </div>
+          <div class="kpi-main">
+            <span class="kpi-value">35.43%</span>
+            <span class="kpi-label">耗时减少</span>
+          </div>
+          <div class="kpi-bar" aria-hidden="true"><span style="width: 35.43%"></span></div>
+          <ul class="kpi-meta">
+            <li><strong>最快版本：</strong>A100 OpenCL 优化版</li>
+            <li><strong>端到端耗时：</strong>70.042 → 45.226 秒（对比同卡上游 Vina-GPU 2.1）</li>
+            <li><strong>整卡采样显存峰值：</strong>19.046 → 18.499 GiB（减少 <strong>2.87%</strong>，560 MiB；单配体 <code>upstream-single</code>）</li>
+            <li><strong>输出校验：</strong>两版合计 150/150 次通过，均匹配 A100 冻结参考</li>
+          </ul>
+        </article>
+
+        <article class="kpi-card kpi-card--s5000">
+          <div class="kpi-head">
+            <span class="platform-tag platform-tag--s5000">摩尔线程 MTT S5000 80 GiB</span>
+            <span class="kpi-scope">25 个最终用例</span>
+          </div>
+          <div class="kpi-main">
+            <span class="kpi-value">89.15%</span>
+            <span class="kpi-label">耗时减少</span>
+          </div>
+          <div class="kpi-bar" aria-hidden="true"><span style="width: 89.15%"></span></div>
+          <ul class="kpi-meta">
+            <li><strong>最快版本：</strong>S5000 MUSA 优化版</li>
+            <li><strong>端到端耗时：</strong>1181.236 → 128.220 秒（对比同卡 Vina-GPU 2.1 MUSA 移植版）</li>
+            <li><strong>进程采样显存峰值：</strong>3542 → 620 MiB（减少 <strong>82.50%</strong>，25 个最终用例）</li>
+            <li><strong>输出校验：</strong>两版合计 150/150 次通过，均匹配 S5000 移植基线</li>
+          </ul>
+        </article>
+      </div>
+    </header>
+
+    <nav class="toc-nav" aria-label="报告目录">
+      <div class="toc-title">目录导航</div>
+      <ol class="toc-list">
+        <li class="toc-item">
+          <a class="toc-link" href="#sec-best">
+            <span class="toc-num">01</span>
+            <span class="toc-name">最佳结果</span>
+          </a>
+        </li>
+        <li class="toc-item">
+          <a class="toc-link" href="#sec-platforms">
+            <span class="toc-num">02</span>
+            <span class="toc-name">各平台的版本对照</span>
+          </a>
+        </li>
+        <li class="toc-item">
+          <a class="toc-link" href="#sec-prompts">
+            <span class="toc-num">03</span>
+            <span class="toc-name">核心提示词与各任务的要求</span>
+          </a>
+        </li>
+        <li class="toc-item">
+          <a class="toc-link" href="#sec-details">
+            <span class="toc-num">04</span>
+            <span class="toc-name">各版本做了什么</span>
+          </a>
+        </li>
+        <li class="toc-item">
+          <a class="toc-link" href="#sec-agents">
+            <span class="toc-num">05</span>
+            <span class="toc-name">与现有 Agent 的对比</span>
+          </a>
+        </li>
+      </ol>
+      <div class="toc-sublinks">
+        <span class="toc-sublabel">关键分节：</span>
+        <a class="toc-pill" href="#sub-memory">峰值内存与显存</a>
+        <a class="toc-pill" href="#sub-cpu-8">CPU 八版本统一复测</a>
+        <a class="toc-pill" href="#sub-a100-cmp">NVIDIA A100</a>
+        <a class="toc-pill" href="#sub-s5000-cmp">摩尔线程 S5000</a>
+        <a class="toc-pill" href="#sub-langgraph">LangGraph 框架探索（失败）</a>
+        <a class="toc-pill" href="#sub-c11-6">CPU C11 六个开发候选</a>
+        <a class="toc-pill" href="#sub-agent-budget">实验设置与预算</a>
+        <a class="toc-pill" href="#sub-agent-7">冻结候选七版三轮复测</a>
+      </div>
+    </nav>
+
+    <main>
+      <!-- Section 1: 最佳结果 -->
+      <section class="report-section" id="sec-best">
+        <div class="section-head">
+          <span class="section-num">01</span>
+          <h2>最佳结果</h2>
+        </div>
+
+        <p>我们分别在 CPU、NVIDIA A100 和摩尔线程 S5000 上优化了 AutoDock Vina 的对接耗时。</p>
+
+        <div class="table-wrap" role="region" tabindex="0" aria-label="各平台最佳结果表">
+          <table class="table-compact">
+            <thead>
+              <tr>
+                <th>平台</th>
+                <th>最快的版本</th>
+                <th>同平台基线</th>
+                <th>正式计时规模</th>
+                <th class="num">优化前 → 优化后</th>
+                <th class="num">耗时减少</th>
+                <th>输出校验</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="row-highlight">
+                <td class="col-platform">Intel Xeon Platinum 8362 CPU</td>
+                <td class="col-ver">CPU C11 优化版（GPT-6.2 Astra 主会话）</td>
+                <td>上游 AutoDock-Vina</td>
+                <td>19 个完整对接配置</td>
+                <td class="num">3445.941 → 1936.001 秒</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span><strong>43.82%</strong></span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--cpu" style="width: 43.82%"></span></span>
+                  </div>
+                </td>
+                <td class="col-verify">该版 75/75 次通过，8 版合计 600/600 次</td>
+              </tr>
+              <tr class="row-highlight--a100">
+                <td class="col-platform">NVIDIA A100-SXM4-80GB</td>
+                <td class="col-ver">A100 OpenCL 优化版</td>
+                <td>同卡上游 Vina-GPU 2.1</td>
+                <td>25 个最终用例</td>
+                <td class="num">70.042 → 45.226 秒</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span><strong>35.43%</strong></span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--a100" style="width: 35.43%"></span></span>
+                  </div>
+                </td>
+                <td class="col-verify">两版合计 150/150 次通过，均匹配 A100 冻结参考</td>
+              </tr>
+              <tr class="row-highlight--s5000">
+                <td class="col-platform">摩尔线程 MTT S5000 80 GiB</td>
+                <td class="col-ver">S5000 MUSA 优化版</td>
+                <td>同卡 Vina-GPU 2.1 MUSA 移植版</td>
+                <td>25 个最终用例</td>
+                <td class="num">1181.236 → 128.220 秒</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span><strong>89.15%</strong></span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--s5000" style="width: 89.15%"></span></span>
+                  </div>
+                </td>
+                <td class="col-verify">两版合计 150/150 次通过，均匹配 S5000 移植基线</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="table-hint">提示：窄屏下可左右滑动查看完整表格。</p>
+
+        <div class="note-box note-box--warn">
+          <p>每个用例重复运行三次，表中耗时是各用例端到端耗时中位数之和。各平台分别以同平台基线计算降幅。PDBQT 是 Vina 记录对接姿态的文件，校验比较完整文件。S5000 优化版与同卡 MUSA 基线的输出完全一致。S5000 两版与 A100 参考输出完全一致的最终用例均为 <strong>0/25</strong>。</p>
+        </div>
+
+        <h3 id="sub-memory">峰值内存与显存</h3>
+
+        <div class="table-wrap" role="region" tabindex="0" aria-label="峰值内存与显存对照表">
+          <table>
+            <thead>
+              <tr>
+                <th>平台</th>
+                <th>指标</th>
+                <th>测量范围</th>
+                <th class="num">基线 → 优化版</th>
+                <th class="num">减少</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="col-nowrap">CPU</td>
+                <td class="col-nowrap">进程最高观测 RSS</td>
+                <td class="col-wide">正式批次 19 个完整对接配置，第 2、3 轮</td>
+                <td class="num">828.30 → 418.57 MiB</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span><strong>49.47%</strong></span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--cpu" style="width: 49.47%"></span></span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="col-nowrap">NVIDIA A100</td>
+                <td class="col-nowrap">整卡采样显存峰值</td>
+                <td class="col-wide">公开单配体 <code>upstream-single</code>，8,000 个搜索线程</td>
+                <td class="num">19.046 → 18.499 GiB</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span><strong>2.87%</strong>（560 MiB）</span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--a100" style="width: 2.87%"></span></span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="col-nowrap">摩尔线程 S5000</td>
+                <td class="col-nowrap">进程采样显存峰值</td>
+                <td class="col-wide">正式批次 25 个最终用例</td>
+                <td class="num">3542 → 620 MiB</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span><strong>82.50%</strong></span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--s5000" style="width: 82.50%"></span></span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="table-hint">提示：窄屏下可左右滑动查看完整表格。</p>
+
+        <p>RSS 是进程占用的驻留内存。CPU 各版本的峰值可以来自不同用例。A100 每约 10 毫秒采样整卡显存，包含驱动占用。S5000 每约 2 秒采样进程显存。</p>
+      </section>
+
+      <!-- Section 2: 各平台的版本对照 -->
+      <section class="report-section" id="sec-platforms">
+        <div class="section-head">
+          <span class="section-num">02</span>
+          <h2>各平台的版本对照</h2>
+        </div>
+
+        <h3 id="sub-cpu-8">CPU · 八个版本统一复测</h3>
+
+        <div class="table-wrap" role="region" tabindex="0" aria-label="CPU 八个版本统一复测表">
+          <table>
+            <thead>
+              <tr>
+                <th>版本</th>
+                <th class="num">19 个完整对接配置（秒）</th>
+                <th class="num">相对上游耗时减少</th>
+                <th class="num">最高观测 RSS（MiB）</th>
+                <th>主要改动</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>上游 AutoDock-Vina</td>
+                <td class="num">3445.941</td>
+                <td class="num">基线</td>
+                <td class="num">828.30</td>
+                <td class="col-wide">C++ 原版，蒙特卡洛搜索加 BFGS 局部优化</td>
+              </tr>
+              <tr>
+                <td>向量化与步长试算版（Claude Fable 5.2）</td>
+                <td class="num">2782.786</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span>19.24%</span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--cpu" style="width: 19.24%"></span></span>
+                  </div>
+                </td>
+                <td class="num">564.00</td>
+                <td class="col-wide">原子对势能表共享、向量化筛选和插值、提前试算线搜索</td>
+              </tr>
+              <tr>
+                <td>BFGS 缓冲复用版（GPT-6 Luna）</td>
+                <td class="num">3428.517</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span>0.51%</span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--cpu" style="width: 0.51%"></span></span>
+                  </div>
+                </td>
+                <td class="num">828.32</td>
+                <td class="col-wide">复用 BFGS 临时向量，删除只写数组</td>
+              </tr>
+              <tr>
+                <td>势表共享版（GPT-6 Astra）</td>
+                <td class="num">3246.062</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span>5.80%</span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--cpu" style="width: 5.80%"></span></span>
+                  </div>
+                </td>
+                <td class="num">437.75</td>
+                <td class="col-wide">Vina/Vinardo 势表共享、减少网格复制、缓存矩阵乘法输入</td>
+              </tr>
+              <tr>
+                <td>BFGS 按列存储版（GPT-6.1 Sol）</td>
+                <td class="num">3155.140</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span>8.44%</span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--cpu" style="width: 8.44%"></span></span>
+                  </div>
+                </td>
+                <td class="num">437.74</td>
+                <td class="col-wide">BFGS 对称矩阵按列连续存储，两路同时计算矩阵乘向量</td>
+              </tr>
+              <tr>
+                <td>原子对索引缓存版（GPT-6 Luna）</td>
+                <td class="num">3427.053</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span>0.55%</span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--cpu" style="width: 0.55%"></span></span>
+                  </div>
+                </td>
+                <td class="num">828.32</td>
+                <td class="col-wide">缓存原子对的查表索引</td>
+              </tr>
+              <tr>
+                <td>融合优化版（整合模型待核实）</td>
+                <td class="num">2622.641</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span>23.89%</span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--cpu" style="width: 23.89%"></span></span>
+                  </div>
+                </td>
+                <td class="num"><strong>275.30</strong></td>
+                <td class="col-wide">组合原子对索引、AD4 三图插值、BFGS 和条件式仅能量试探</td>
+              </tr>
+              <tr class="row-highlight">
+                <td><strong>CPU C11 优化版（GPT-6.2 Astra 主会话）</strong></td>
+                <td class="num"><strong>1936.001</strong></td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span><strong>43.82%</strong></span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--cpu" style="width: 43.82%"></span></span>
+                  </div>
+                </td>
+                <td class="num">418.57</td>
+                <td class="col-wide">C11 原子对、AD4 和 BFGS 内核，结合按运行频率指导的编译优化</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="table-hint">提示：窄屏下可左右滑动查看完整表格。</p>
+
+        <p>八个版本在同一台机器上固定 CPU 核、输入、随机种子和搜索设置，配对交替串行运行三轮。表中计时包括 19 个完整对接配置。正确性校验还纳入 6 个仅评分或仅局部优化的配置。每版 75 次运行，适用的 PDBQT 和规范化日志均与冻结的上游输出一致。</p>
+        <p>内存取八个版本均有采样的第 2、3 轮，每版有 38 次完整对接观测。每约 200 毫秒读取进程的 <code>VmHWM</code>，即截至采样时的峰值 RSS，并取每版的最高观测值。</p>
+
+        <h3 id="sub-a100-cmp">NVIDIA A100 · 上游与 OpenCL 优化版</h3>
+
+        <div class="table-wrap" role="region" tabindex="0" aria-label="NVIDIA A100 版本对照表">
+          <table>
+            <thead>
+              <tr>
+                <th>版本</th>
+                <th class="num">公开集 9 例（秒）</th>
+                <th class="num">最终集 25 例（秒）</th>
+                <th class="num">最终集耗时减少</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>上游 Vina-GPU 2.1</td>
+                <td class="num">37.879</td>
+                <td class="num">70.042</td>
+                <td class="num">基线</td>
+              </tr>
+              <tr class="row-highlight--a100">
+                <td><strong>A100 OpenCL 优化版</strong></td>
+                <td class="num"><strong>28.823</strong></td>
+                <td class="num"><strong>45.226</strong></td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span><strong>35.43%</strong></span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--a100" style="width: 35.43%"></span></span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>公开集耗时减少 <strong>23.91%</strong>。最终集含 24 个单配体用例和 1 个双配体用例。两版均从空驱动缓存开始，在同一卡上交替运行三轮，各 75 次，PDBQT 和姿态表均与参考输出一致。候选用公开输入调优，在最终验收前冻结。开发阶段可见部分最终集清单信息。</p>
+
+        <h3 id="sub-s5000-cmp">摩尔线程 S5000 · MUSA 移植基线与优化版</h3>
+
+        <div class="table-wrap" role="region" tabindex="0" aria-label="摩尔线程 S5000 版本对照表">
+          <table>
+            <thead>
+              <tr>
+                <th>版本</th>
+                <th class="num">公开集 9 例（秒）</th>
+                <th class="num">最终集 25 例（秒）</th>
+                <th class="num">最终集耗时减少</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Vina-GPU 2.1 MUSA 移植基线</td>
+                <td class="num">482.704</td>
+                <td class="num">1181.236</td>
+                <td class="num">基线</td>
+              </tr>
+              <tr class="row-highlight--s5000">
+                <td><strong>S5000 MUSA 优化版</strong></td>
+                <td class="num"><strong>99.857</strong></td>
+                <td class="num"><strong>128.220</strong></td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span><strong>89.15%</strong></span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--s5000" style="width: 89.15%"></span></span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>公开集耗时减少 <strong>79.31%</strong>。S5000 同卡最终集的 150 次运行通过了 156 份完整 PDBQT 和 1,356 行姿态表的校验。跨平台输出存在数值差异。例如在相同的 2bm2 公开用例设置下，A100 的最佳亲和力为 −8.6 kcal/mol，S5000 两个版本均为 −8.1 kcal/mol。</p>
+      </section>
+
+      <!-- Section 3: 核心提示词与各任务的要求 -->
+      <section class="report-section" id="sec-prompts">
+        <div class="section-head">
+          <span class="section-num">03</span>
+          <h2>核心提示词与各任务的要求</h2>
+        </div>
+
+        <div class="prompt-card">
+          <h3>共用要求</h3>
+          <p>各优化任务都要求在相同设置下保持输出一致。以下为共用要求及代表性提示词摘录。</p>
+          <blockquote>
+            <p>优化 AutoDock Vina 的端到端运行时间，并记录内存或显存。固定输入、随机种子、精度和对接设置，保留原有评分、搜索和精炼的输出。可以先采样定位耗时，也可以尝试数学等价改写、数据布局或实现语言的变化。用公开用例筛选候选，保存失败尝试和正确性证据。确定候选后冻结代码与构建产物，在相同硬件和设置下独立对照基线，报告耗时和完整输出校验。</p>
+          </blockquote>
+        </div>
+
+        <div class="prompt-card">
+          <h3>CPU · 向量化与步长试算版（Claude Fable 5.2）的约束</h3>
+          <p>项目要求 CPU 提速，并且“在相同 seed 和相同搜索参数下，输出的 pose、能量、日志数值与原版逐位相同”。参测版本的核心源码署名为 Claude Fable 5.2。</p>
+        </div>
+
+        <div class="prompt-card">
+          <h3>CPU · BFGS 缓冲复用版的局部任务</h3>
+          <blockquote>
+            <p>Prioritize small allocation/repeated-work changes around BFGS and local search.</p>
+          </blockquote>
+          <p>BFGS 是 Vina 的局部优化方法。C 路线的任务是避免重复分配和计算，同时保持原有的累加顺序。</p>
+        </div>
+
+        <div class="prompt-card">
+          <h3>CPU · 势表共享版（GPT-6 Astra）的开放式任务</h3>
+          <blockquote>
+            <p>不允许使用 gpu 加速，不允许降低精度，不允许利用快捷方式导致非科学结果的输出</p>
+            <p>可以尝试，替换里面的算法，重写结构，重写函数或者完全的重构项目，但是我们要求所有的 demo 的结果是相同的，记录对应的运行时间以及内存开销</p>
+          </blockquote>
+          <p>这项任务允许调整数据结构和底层算子。候选须通过完整命令行输出与程序接口双精度数值的校验。</p>
+        </div>
+
+        <div class="prompt-card">
+          <h3>CPU · BFGS 矩阵与原子对的后续优化</h3>
+          <blockquote>
+            <p>我们本次 focus on code 中的一些算法/底层算子的一些优化</p>
+            <p>测试的 baseline 既要包括原始版本的代码，也要包括 v1 版本的代码，最好是比两者都要好</p>
+          </blockquote>
+          <p>后续优化以势表共享版为起点，D 修改 BFGS 矩阵算子，E 在 D 上增加原子对向量化。每轮用上游和势表共享版作为基线。</p>
+        </div>
+
+        <div class="prompt-card">
+          <h3>CPU · 原子对索引与网格寻址的定向探索</h3>
+          <p>R1 测试提前计算原子对查表索引能否节省耗时，R2 探索网格插值的地址计算。候选先通过输出校验，再比较端到端耗时。</p>
+        </div>
+
+        <div class="prompt-card">
+          <h3>CPU · 数学等价改写、工具优化与融合方案</h3>
+          <div class="table-wrap" role="region" tabindex="0" aria-label="CPU 数学等价改写、工具优化与融合方案要求表">
+            <table>
+              <thead>
+                <tr>
+                  <th>路线</th>
+                  <th>核心要求</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="col-nowrap">数学等价改写</td>
+                  <td>从评分公式和浮点等价条件出发，保持原搜索与累加顺序。</td>
+                </tr>
+                <tr>
+                  <td class="col-nowrap">工具优化</td>
+                  <td>先采样定位热点，再根据测量结果调整编译选项、查表、数据布局和向量化。</td>
+                </tr>
+                <tr>
+                  <td class="col-nowrap">融合优化</td>
+                  <td>组合按列 BFGS、原子对索引缓存、数学改写和工具优化的改动，逐项开关测量收益，校验完整输出。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="prompt-card">
+          <h3>CPU · C11 跨语言内核</h3>
+          <blockquote>
+            <p>你可以通过将底层算子或核心组件构成为其他语言</p>
+          </blockquote>
+          <p>任务允许用其他语言重写底层算子，要求保持输入输出一致，并按统一协议复测历史版本。最终实现保留 C++ 的搜索逻辑，将部分内核改用 C11。主优化会话使用 GPT-6.2 Astra。</p>
+        </div>
+
+        <div class="prompt-card">
+          <h3>A100 · 保持原 GPU 实现的对接输出</h3>
+          <blockquote>
+            <p>运行时间以及显存开销，都是你可以优化的方向</p>
+            <p>在相同的种子和设置下，对于相同的 docking 输入应该产生相同的输出</p>
+          </blockquote>
+          <p>以 Vina-GPU 2.1 为起点，用公开用例定位瓶颈，允许尝试数学等价改写，再在相同条件下测试上游和优化版。</p>
+        </div>
+
+        <div class="prompt-card">
+          <h3>S5000 · 先完成 MUSA 移植，再做同卡优化</h3>
+          <blockquote>
+            <p>如果需要适配国产卡的话，你可以先修改原始的代码，然后再去做加速</p>
+          </blockquote>
+          <p>任务允许先把上游实现移植到摩尔线程，再在同一张 S5000 上比较移植基线与优化版。两版须在相同输入、随机种子和设置下产生一致的输出。</p>
+        </div>
+      </section>
+
+      <!-- Section 4: 各版本做了什么 -->
+      <section class="report-section" id="sec-details">
+        <div class="section-head">
+          <span class="section-num">04</span>
+          <h2>各版本做了什么</h2>
+        </div>
+
+        <h3>CPU · 从早期候选到 C11</h3>
+
+        <div class="sub-block">
+          <h4>向量化与步长试算版（Claude Fable 5.2）</h4>
+          <p>单线程样例的 gprof 采样中，原子对求值约占 50%，网格插值约占 21%。这版共享相同的势能表，用向量指令批量筛选原子对和插值，同时保持原累加次序。空闲线程提前试算后续步长，主线程按原顺序采纳。11 月正式复测的耗时减少 <strong>19.24%</strong>，75/75 次通过。</p>
+        </div>
+
+        <div class="sub-block sub-block--fail" id="sub-langgraph">
+          <h4>LangGraph Agent 框架探索（失败）</h4>
+          <p>C 来自早期 AccelFlow，R1 来自后续的 LGAccel v3。两轮都用 LangGraph 编排分析、规划、探索和验证，C、R1 的探索节点均通过 Codex CLI 调用 GPT-6 Luna 修改源码。两轮都未产出达到当轮性能门槛的候选，因此记为失败的框架探索。通过输出校验的候选后来纳入了统一复测。</p>
+          <ul>
+            <li><strong>C · BFGS 缓冲复用。</strong> 将每轮的临时向量移到循环外复用，并删除只写不读的能量数组。原轮验证的耗时增加约 <strong>1.26%</strong>，11 月统一复测的耗时减少 <strong>0.51%</strong>。</li>
+            <li><strong>R1 · 原子对索引缓存。</strong> 在建立相互作用原子对时预先计算势能表索引，原子重新编号后重算。原轮验证的耗时减少 <strong>1.08%</strong>，未达到约 <strong>1.96%</strong> 的验收门槛。另一条网格寻址路线 R2 未提交可测候选。R1 在 11 月统一复测的耗时减少 <strong>0.55%</strong>。</li>
+          </ul>
+        </div>
+
+        <div class="sub-block">
+          <h4>势表共享版（GPT-6 Astra）</h4>
+          <p>完整展平 BFGS 矩阵改变了部分双精度数值和 PDBQT，因此撤回。候选保留 Vina/Vinardo 势表共享、减少网格复制和缓存矩阵乘法输入分量。AD4 的电荷相关势表沿用原路径。11 月正式复测的耗时减少 <strong>5.80%</strong>。</p>
+        </div>
+
+        <h4>BFGS 按列存储版（GPT-6.1 Sol）与原子对向量化版（E）</h4>
+        <p>D 是势表共享版后续实验的候选。GPT-6.1 Sol 实现了按列存储的 BFGS，GPT-6 Astra 负责集成。</p>
+        <p>D 按列连续存储 BFGS 的对称矩阵，同时计算两条相邻行，各行保持原加法次序。E 在 D 上增加两对原子并行求值，随后按原顺序提交力和能量。两个候选均通过当轮的命令行和程序接口输出校验。</p>
+
+        <div class="table-wrap" role="region" tabindex="0" aria-label="BFGS 按列存储版与原子对向量化版同期对照表">
+          <table>
+            <thead>
+              <tr>
+                <th>历史版本</th>
+                <th class="num">当轮上游（秒）</th>
+                <th class="num">当轮势表共享版（秒）</th>
+                <th class="num">当轮候选（秒）</th>
+                <th>相对同期势表共享版的结果</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>BFGS 按列存储版（GPT-6.1 Sol）</td>
+                <td class="num">3242.525</td>
+                <td class="num">3074.107</td>
+                <td class="num">2989.231</td>
+                <td>D 耗时减少约 2.76%</td>
+              </tr>
+              <tr>
+                <td>原子对向量化版（E）</td>
+                <td class="num">3249.189</td>
+                <td class="num">3082.408</td>
+                <td class="num">3081.170</td>
+                <td>E 耗时减少约 0.04%，6 个 AD4 完整对接配置更慢</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="table-hint">提示：窄屏下可左右滑动查看完整表格。</p>
+
+        <p>D 和 E 分别使用各自的同期基线。D 被选入 11 月统一复测，相对上游的耗时减少 <strong>8.44%</strong>。</p>
+
+        <h4>数学等价改写、工具优化与融合优化版</h4>
+
+        <div class="table-wrap" role="region" tabindex="0" aria-label="数学等价改写、工具优化与融合优化版结果表">
+          <table>
+            <thead>
+              <tr>
+                <th>版本</th>
+                <th>实现与取舍</th>
+                <th>当轮结果</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="col-nowrap">数学等价改写版</td>
+                <td class="col-wide">保留数学等价且通过原输出检查的改动。线搜索的部分试探只算能量，获选坐标再补梯度。</td>
+                <td class="col-wide">历史批次全 25 配置耗时减少 <strong>18.81%</strong>，其中完整对接减少约 <strong>18.5%</strong></td>
+              </tr>
+              <tr>
+                <td class="col-nowrap">工具优化版</td>
+                <td class="col-wide">以采样为依据优化查表和 AD4 网格插值，保留条件相符的三图联合取值路径。</td>
+                <td class="col-wide">历史批次全 25 配置耗时减少 <strong>12.16%</strong></td>
+              </tr>
+              <tr class="row-highlight">
+                <td class="col-nowrap">融合优化版</td>
+                <td class="col-wide">组合 R1 的原子对索引、AD4 三图向量化插值、D 的按列 BFGS 和条件式仅能量试探。独立开关对照发现，关闭单图手写 SIMD 在两个 XS 代表配置上都更快，因此关闭该分支。</td>
+                <td class="col-wide">历史批次全 25 配置耗时减少 <strong>21.08%</strong>，其中完整对接减少约 <strong>20.67%</strong>。11 月统一复测的耗时减少 <strong>23.89%</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="table-hint">提示：窄屏下可左右滑动查看完整表格。</p>
+
+        <p>数学等价改写版和工具优化版的结果来自各自的历史批次。融合优化版纳入了 11 月统一复测，整合阶段的具体模型待核实。</p>
+
+        <h4 id="sub-c11-6">CPU C11 优化版的六个开发候选</h4>
+        <p>六个候选均通过 9 个公开配置的字节校验。下面用其中 7 个完整对接配置做单轮开发筛选，每个百分比都以该候选的同期上游耗时为参照。</p>
+
+        <div class="table-wrap" role="region" tabindex="0" aria-label="CPU C11 优化版六个开发候选筛选表">
+          <table>
+            <thead>
+              <tr>
+                <th>候选</th>
+                <th>主要改动</th>
+                <th class="num">同期上游 → 候选（秒）</th>
+                <th class="num">筛选耗时减少</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="col-nowrap">八对原子并行版</td>
+                <td class="col-wide">从融合优化版起步，用 C11 AVX-512 每批计算八个原子对的距离与势表插值，按原次序累加能量和力。</td>
+                <td class="num">144.364 → 115.027</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span>20.32%</span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--cpu" style="width: 20.32%"></span></span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="col-nowrap">BFGS 上三角存储版</td>
+                <td class="col-wide">从融合优化版起步，将逆 Hessian 矩阵只存按列连续的上三角，用 C11 做矩阵乘向量、点积和更新，保留加法顺序。</td>
+                <td class="num">144.368 → 102.234</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span>29.19%</span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--cpu" style="width: 29.19%"></span></span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="col-nowrap">C11 配对与插值版</td>
+                <td class="col-wide">从上游起步，结合向量化与步长试算版的 BFGS、XS 网格与势表共享，用 C11 向量化四对原子的计算及 AD4 三图插值。</td>
+                <td class="num">144.368 → 99.971</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span>30.75%</span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--cpu" style="width: 30.75%"></span></span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="col-nowrap">C11 组合内核版</td>
+                <td class="col-wide">组合 C11 原子对、AD4、BFGS 内核和条件式仅能量线搜索，保留 C++ 蒙特卡洛搜索。</td>
+                <td class="num">144.426 → 83.865</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span>41.93%</span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--cpu" style="width: 41.93%"></span></span>
+                  </div>
+                </td>
+              </tr>
+              <tr class="row-highlight">
+                <td class="col-nowrap">编译剖析版</td>
+                <td class="col-wide">对 C11 组合内核版用三个公开示例插桩，收集执行频率，再用 GCC 做基于剖析的编译优化。</td>
+                <td class="num"><strong>144.071 → 80.811</strong></td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span><strong>43.91%</strong></span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--cpu" style="width: 43.91%"></span></span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="col-nowrap">合并势表读取版</td>
+                <td class="col-wide">从 C11 组合内核版起步，把配对梯度路径中相邻的能量及导数表项合并成一次读取，再恢复原槽位和累加顺序。</td>
+                <td class="num">144.936 → 83.492</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span>42.39%</span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--cpu" style="width: 42.39%"></span></span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="table-hint">提示：窄屏下可左右滑动查看完整表格。</p>
+
+        <p>八对原子并行版在同期测试中慢于融合优化版。编译剖析版在开发筛选中最快，作为正式 CPU C11 优化版进入统一复测。用于编译剖析的公开样例运行时间在正式计时之外。</p>
+
+        <h3>A100 · OpenCL 优化版</h3>
+        <ol class="step-list step-list--a100">
+          <li><strong>上游基线。</strong> 网格建立与姿态搜索在 GPU 执行，末端精炼和姿态排序在 CPU 执行。从公开单配体用例 <code>upstream-single</code> 采样，主机向设备上传了 1115.17 MiB，且计算结束时主线程有 593.4 ms 与进度线程的休眠重叠。</li>
+          <li><strong>候选实现。</strong> 只为当前批次实际使用的原子类型建网格，保留原有类型编号、插值角点顺序和两份冻结 OpenCL 内核。主机只上传网格头，略去搜索会全部覆盖的缓冲上传，并减少空工作项和队列等待。批对接复用受体解析和 CPU 精炼所用的空间索引，计算完成立即唤醒进度线程。</li>
+          <li><strong>结果。</strong> 同一公开单例的上传量降到 <strong>13.53 MiB</strong>，减少 98.79%。最终集耗时减少 <strong>35.43%</strong>，150/150 次通过输出校验。</li>
+        </ol>
+
+        <h3>S5000 · MUSA 移植与优化</h3>
+        <ol class="step-list step-list--s5000">
+          <li><strong>MUSA 移植基线。</strong> 将上游 OpenCL 的网格与搜索计算函数迁移到 MUSA，保留原始评分、随机数、搜索、CPU 精炼、排序与输出路径。在同一张 S5000 上冻结该程序用于计时和输出校验。</li>
+          <li><strong>只改主机端的中间版。</strong> 移除未使用的查找表、减少模型和结果复制、只传网格头。在 2bm2 的 1,000 线程诊断用例上，这个中间版从提交网格到主机确认完成仍需 <strong>41.528 秒</strong>，设备事件计时为 <strong>0.803 秒</strong>。采样看到主机侧数据搬运与等待，因此继续检查网格完成路径。</li>
+          <li><strong>撤回单标量网格。</strong> 每个网格点只存一个浮点值，把该单例的设备缓冲峰值降到 <strong>45.81 MiB</strong>。虽然约 903 万个逻辑网格值逐位相同，下游完整 PDBQT 已发生变化，这条路线未进入最终交付。</li>
+          <li><strong>最终优化版。</strong> 保留八角点布局和原搜索内核，按实际访问范围映射显存。网格内核用 4 字节标志记录异常，触发时在同一设备流上重放原内核以保留警告及后续计算。上述单例从提交网格到主机确认完成的时间降到 <strong>0.426 秒</strong>，后端记录的设备缓冲峰值由 <strong>1099.35 MiB 降到 317.35 MiB</strong>。</li>
+        </ol>
+
+        <div class="note-box">
+          <p>GPU 两条路线以相同的上游提交 <code>180272b8a526</code> 为源码起点。S5000 使用 MUSA SDK 4.3.8。</p>
+        </div>
+      </section>
+
+      <!-- Section 5: 与现有 Agent 的对比 -->
+      <section class="report-section" id="sec-agents">
+        <div class="section-head">
+          <span class="section-num">05</span>
+          <h2>与现有 Agent 的对比</h2>
+        </div>
+
+        <p>
+          2026 年 10 月的 CPU 复测以同一个 AutoDock Vina 上游提交 <code>3c65c0b</code> 为基线，使用相同的 25 个配置和输出校验要求。对照包括本项目的四个 CPU 候选，以及三种公开方法生成的候选。公开方法是 Karim Elmaaroufi 的 Helix、Sakana AI 的 ShinkaEvolve 和卢布尔雅那大学发布的性能优化提示词流程（LSO）。
+          <span class="ref-links">
+            <a href="https://github.com/KE7/helix" target="_blank" rel="noopener noreferrer">Helix 仓库</a>
+            <span class="ref-sep">·</span>
+            <a href="https://arxiv.org/html/2509.19349v1" target="_blank" rel="noopener noreferrer">ShinkaEvolve 论文</a>
+            <span class="ref-sep">·</span>
+            <a href="https://arxiv.org/html/2609.37849v1" target="_blank" rel="noopener noreferrer">LSO 论文</a>
+          </span>
+        </p>
+
+        <h3 id="sub-agent-budget">实验设置与预算</h3>
+        <p>三种公开方法的 18 次源码提案均用本地 Codex 的 <code>gpt-6.1-sol / xhigh</code>。每种方法各有 <strong>6 次提案机会</strong>，失败和空改动也计入。表中的 token 数为已记录的输入和输出之和。</p>
+
+        <div class="table-wrap" role="region" tabindex="0" aria-label="三种公开方法实验设置与预算表">
+          <table>
+            <thead>
+              <tr>
+                <th>方法</th>
+                <th class="num">源码提案</th>
+                <th class="num">形成有效候选</th>
+                <th class="num">有 token 记录的提案</th>
+                <th class="num">已记录提案 token</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Helix</td>
+                <td class="num">6</td>
+                <td class="num">2</td>
+                <td class="num">4/6</td>
+                <td class="num">1,164,048，下界</td>
+              </tr>
+              <tr>
+                <td>ShinkaEvolve</td>
+                <td class="num">6</td>
+                <td class="num">4</td>
+                <td class="num">6/6</td>
+                <td class="num">420,862</td>
+              </tr>
+              <tr>
+                <td>LSO</td>
+                <td class="num">6</td>
+                <td class="num">5</td>
+                <td class="num">6/6</td>
+                <td class="num">2,607,534</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="table-hint">提示：窄屏下可左右滑动查看完整表格。</p>
+
+        <div class="note-box note-box--warn">
+          <p>本项目复测的是四个既有候选。BFGS 缓冲复用版和原子对索引缓存版来自 LangGraph Agent 探索，势表共享版和 BFGS 按列存储版来自直接代码优化。四版在各自的开发过程中形成，提案预算与上述公开方法不同。本节比较冻结候选的运行表现。</p>
+        </div>
+
+        <h3>公开方法的提示词与候选选择</h3>
+
+        <div class="table-wrap" role="region" tabindex="0" aria-label="公开方法的提示词与候选选择表">
+          <table>
+            <thead>
+              <tr>
+                <th>方法</th>
+                <th>实际提示词摘录与改动范围</th>
+                <th>候选筛选和取舍</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="col-nowrap">Helix</td>
+                <td class="col-prompt">“Focus on unnecessary allocation, copying, repeated bookkeeping and equivalent integer/index work where arithmetic sequence remains identical.” 允许读整仓，修改限于 <code>src/lib</code> 和 <code>src/main</code> 的 C++。独立构建评测后，把反馈交给下一代。</td>
+                <td class="col-prompt">p05 将 BFGS 工作向量连续存储并复用工作空间，单轮耗时减少 <strong>4.71%</strong>。p06 改三角矩阵索引，单轮耗时减少 <strong>3.19%</strong>。p05 进入最终复测。</td>
+              </tr>
+              <tr>
+                <td class="col-nowrap">ShinkaEvolve</td>
+                <td class="col-prompt">“Optimize the provided single Vina C++ source file for lower runtime while preserving all existing scientific behavior.” 用 gprof 选择 <code>src/lib/model.cpp</code>，要求单文件 <code>SEARCH/REPLACE</code> 补丁。</td>
+                <td class="col-prompt">前两次提案未形成可运行候选。gen5 的四配对批处理使耗时增加 <strong>2.50%</strong>。gen6 把首个有效配对的初始化移出后续循环，单轮耗时减少 <strong>1.96%</strong>，进入最终复测。</td>
+              </tr>
+              <tr>
+                <td class="col-nowrap">LSO</td>
+                <td class="col-prompt">“identify and rank credible exact ideas from measured costs, then implement only the highest-value single local idea in this session.” 六次独立从原始基线起步，每次试一个由剖析支持的局部改动，保留 API、原默认值、双精度及运算顺序。</td>
+                <td class="col-prompt">p03 的单轮估计耗时减少 <strong>2.38%</strong>，改用两轮基线作为参照后为 <strong>1.47%</strong>，仍在当时观察到的波动内。最终选小改动、可静态确认索引范围的 p06，将导数查表索引结果用有符号差值类型表示，独立复测其表现。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="table-hint">提示：窄屏下可左右滑动查看完整表格。</p>
+
+        <h3 id="sub-agent-7">冻结候选后的三轮复测</h3>
+        <p>每个候选和它的当批上游基线都对 25 个配置各跑三次。对每个配置取三次耗时的中位数，计算候选耗时占基线的比例，再对 25 个比例取等权几何平均。用 100% 减去这个相对耗时，就得到表中的降幅。逐轮变化以当轮的计时计算。每组都通过了 <strong>150/150 次命令行</strong>与 <strong>74/74 次 C++ API</strong> 输出校验，耗时只统计命令行运行。</p>
+
+        <div class="table-wrap" role="region" tabindex="0" aria-label="冻结候选后的三轮复测七候选对照表">
+          <table>
+            <thead>
+              <tr>
+                <th>来源</th>
+                <th>冻结版本</th>
+                <th class="num">综合耗时减少</th>
+                <th>三轮配对耗时变化</th>
+                <th class="num">单进程峰值 RSS 基线 → 候选（MiB）</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="col-nowrap">本项目</td>
+                <td>BFGS 缓冲复用版（GPT-6 Luna）</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span>1.64%</span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--cpu" style="width: 1.64%"></span></span>
+                  </div>
+                </td>
+                <td>减少 3.40% / 减少 1.53% / 增加 1.37%</td>
+                <td class="num">830.305 → 830.379</td>
+              </tr>
+              <tr>
+                <td class="col-nowrap">本项目</td>
+                <td>原子对索引缓存版（GPT-6 Luna）</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span>0.07%</span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--cpu" style="width: 0.07%"></span></span>
+                  </div>
+                </td>
+                <td>分别减少 1.00%、1.35%、0.26%</td>
+                <td class="num">830.375 → 830.324</td>
+              </tr>
+              <tr>
+                <td class="col-nowrap">本项目</td>
+                <td>势表共享版（GPT-6 Astra）</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span>19.49%</span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--cpu" style="width: 19.49%"></span></span>
+                  </div>
+                </td>
+                <td>分别减少 17.93%、18.35%、19.31%</td>
+                <td class="num">830.324 → 441.273</td>
+              </tr>
+              <tr class="row-highlight">
+                <td class="col-nowrap">本项目</td>
+                <td>BFGS 按列存储版（GPT-6.1 Sol）</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span><strong>20.67%</strong></span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill bar-fill--cpu" style="width: 20.67%"></span></span>
+                  </div>
+                </td>
+                <td>分别减少 21.12%、18.84%、19.12%</td>
+                <td class="num">830.285 → 441.363</td>
+              </tr>
+              <tr>
+                <td class="col-nowrap">公开方法</td>
+                <td>Helix（p05）</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span>2.28%</span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill" style="width: 2.28%"></span></span>
+                  </div>
+                </td>
+                <td>分别减少 1.19%、1.58%、5.72%</td>
+                <td class="num">830.375 → 830.379</td>
+              </tr>
+              <tr>
+                <td class="col-nowrap">公开方法</td>
+                <td>ShinkaEvolve（gen6）</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span>1.07%</span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill" style="width: 1.07%"></span></span>
+                  </div>
+                </td>
+                <td>分别减少 0.97%、2.17%、1.32%</td>
+                <td class="num">830.273 → 830.305</td>
+              </tr>
+              <tr>
+                <td class="col-nowrap">公开方法</td>
+                <td>LSO（p06）</td>
+                <td class="num">
+                  <div class="metric-bar-cell">
+                    <span>0.62%</span>
+                    <span class="bar-track" aria-hidden="true"><span class="bar-fill" style="width: 0.62%"></span></span>
+                  </div>
+                </td>
+                <td>减少 1.00% / 增加 0.52% / 减少 1.46%</td>
+                <td class="num">830.371 → 830.320</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="table-hint">提示：窄屏下可左右滑动查看完整表格。</p>
+
+        <p>内存列在每版各自的 75 次命令行运行中取最高单进程峰值 RSS。</p>
+        <p>七组复测使用同一台 CPU 服务器，每组最多并发 3 个进程，每进程使用 32 个逻辑 CPU。各组在各自时段测同期基线，调度槽的物理核数不同，同一配置在不同轮次也可能换槽。公开方法的复测沿用候选筛选的 25 个配置。表中的结果反映已冻结代码在这些条件下的运行表现。11 月 CPU C11 优化版采用另一套计时协议，结果见文首。</p>
+      </section>
+    </main>
+
+    <footer class="report-footer">
+      <span>AutoDock Vina 多平台优化报告 · 单文件独立版 · <a href="#top">返回顶部</a></span>
+    </footer>
+  </div>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "upstream_commit": "180272b8a5265d6ed9664178345933cebe2cd349",
+  "candidate_commit": "a066bd9c7352c72c055179ed4e83bb1644b9225d",
+  "source_sha256sums_sha256": "6b1a0e767b16a907cb7f2374d1dd58a080ae00f956a035bac14bf341315b417a",
+  "baseline_executable_sha256": "9d27a4e88f3dd597297168d74943e7f8a151d7986ffb118f6b30b9bd349826b1",
+  "candidate_executable_sha256": "aee50ded654b63e39a749c248114310a56c57a068a3e51e4ca0dcd9246323df0",
+  "gpu": "NVIDIA A100-SXM4-80GB",
+  "driver": "535.129.03",
+  "final_cases": 25,
+  "repeats": 3,
+  "passed_runs_per_version": 75,
+  "sum_case_median_seconds": {
+    "baseline": 70.042416893,
+    "candidate": 45.225786168
+  }
+}

@@ -1,0 +1,348 @@
+--- a/runtime/musa_backend.cpp
++++ b/runtime/musa_backend.cpp
+@@ -3,20 +3,60 @@
+ #include "wrapcl.h"
+ #include "vina_musa_launch.h"
+ #include <musa_runtime_api.h>
++#if defined(SMALL_BOX) && !defined(VINA_DISABLE_GRID_VMM) && __has_include(<musa.h>)
++#include <musa.h>
++#include <dlfcn.h>
++#define VINA_GRID_VMM
++#endif
+ #include <algorithm>
+ #include <array>
++#include <cstddef>
+ #include <cstdint>
+ #include <chrono>
+ #include <cstdio>
+ #include <cstdlib>
+ #include <cstring>
++#include <memory>
+ 
+ struct _cl_kernel {
+     unsigned number;
+     std::array<cl_mem, 8> buffers{};
+     std::array<int, 4> scalars{};
+ };
+-struct _cl_mem { void* ptr; size_t bytes; };
++#ifdef VINA_GRID_VMM
++namespace {
++constexpr size_t grids_header_bytes = offsetof(grids_cl, grids);
++constexpr size_t grid_header_bytes = offsetof(grid_cl, m_data);
++
++struct GridHeaders {
++    std::array<char, grids_header_bytes> common{};
++    std::array<std::array<char, grid_header_bytes>, GRIDS_SIZE> grid{};
++    bool have_common{};
++    std::array<bool, GRIDS_SIZE> have_grid{};
++};
++
++struct MappedRange {
++    size_t begin, end;
++    MUmemGenericAllocationHandle handle{};
++    bool created{}, mapped{};
++};
++
++struct SparseGrid {
++    MUdeviceptr base{};
++    size_t reserved_bytes{}, count{};
++    std::array<MappedRange, GRIDS_SIZE> ranges{};
++};
++}
++#endif
++
++struct _cl_mem {
++    void* ptr{};
++    size_t bytes{}, physical_bytes{};
++#ifdef VINA_GRID_VMM
++    std::unique_ptr<GridHeaders> headers;
++    std::unique_ptr<SparseGrid> sparse;
++#endif
++};
+ struct _cl_event { musaEvent_t done{}, begin{}; unsigned number; };
+ 
+ namespace {
+@@ -38,6 +78,204 @@
+         std::exit(EXIT_FAILURE);
+     }
+ }
++void record_allocation(cl_mem h, size_t bytes) {
++    h->physical_bytes = bytes;
++    live_bytes += bytes;
++    peak_bytes = std::max(peak_bytes, live_bytes);
++}
++
++#ifdef VINA_GRID_VMM
++#define VINA_STRINGIFY_IMPL(name) #name
++#define VINA_STRINGIFY(name) VINA_STRINGIFY_IMPL(name)
++struct VmmApi {
++    decltype(&muMemAddressReserve) reserve{};
++    decltype(&muMemAddressFree) free_address{};
++    decltype(&muMemGetAllocationGranularity) granularity{};
++    decltype(&muMemCreate) create{};
++    decltype(&muMemMap) map{};
++    decltype(&muMemSetAccess) access{};
++    decltype(&muMemUnmap) unmap{};
++    decltype(&muMemRelease) release{};
++    decltype(&muMemcpyHtoD) copy{};
++    bool available{};
++
++    VmmApi() {
++        void* library = dlopen("libmusa.so.1", RTLD_NOW | RTLD_LOCAL);
++        if (!library) library = dlopen("libmusa.so", RTLD_NOW | RTLD_LOCAL);
++        if (!library) return;
++#define VINA_LOAD(field, symbol) field = reinterpret_cast<decltype(field)>(dlsym(library, VINA_STRINGIFY(symbol)))
++        VINA_LOAD(reserve, muMemAddressReserve);
++        VINA_LOAD(free_address, muMemAddressFree);
++        VINA_LOAD(granularity, muMemGetAllocationGranularity);
++        VINA_LOAD(create, muMemCreate);
++        VINA_LOAD(map, muMemMap);
++        VINA_LOAD(access, muMemSetAccess);
++        VINA_LOAD(unmap, muMemUnmap);
++        VINA_LOAD(release, muMemRelease);
++        VINA_LOAD(copy, muMemcpyHtoD);
++#undef VINA_LOAD
++        available = reserve && free_address && granularity && create && map && access && unmap && release && copy;
++    }
++};
++#undef VINA_STRINGIFY
++#undef VINA_STRINGIFY_IMPL
++
++VmmApi& vmm_api() {
++    static VmmApi api;
++    return api;
++}
++
++size_t grid_offset(size_t type) {
++    return grids_header_bytes + type * sizeof(grid_cl);
++}
++
++bool stage_grid_header(GridHeaders& headers, size_t offset, size_t bytes, const void* src) {
++    if (offset == 0 && bytes == grids_header_bytes && !headers.have_common) {
++        std::memcpy(headers.common.data(), src, bytes);
++        headers.have_common = true;
++        return true;
++    }
++    if (offset < grids_header_bytes || bytes != grid_header_bytes) return false;
++    const size_t type = (offset - grids_header_bytes) / sizeof(grid_cl);
++    if (type >= GRIDS_SIZE || offset != grid_offset(type) || headers.have_grid[type]) return false;
++    std::memcpy(headers.grid[type].data(), src, bytes);
++    headers.have_grid[type] = true;
++    return true;
++}
++
++template<class Copy>
++bool copy_grid_headers(const GridHeaders& headers, Copy copy) {
++    if (headers.have_common && !copy(0, headers.common.size(), headers.common.data())) return false;
++    for (size_t type = 0; type < GRIDS_SIZE; ++type) {
++        if (headers.have_grid[type] &&
++            !copy(grid_offset(type), headers.grid[type].size(), headers.grid[type].data())) return false;
++    }
++    return true;
++}
++
++void free_sparse_grid(SparseGrid& sparse, const VmmApi& api) {
++    for (size_t i = 0; i < sparse.count; ++i) {
++        const auto& range = sparse.ranges[i];
++        if (range.mapped && api.unmap(sparse.base + range.begin, range.end - range.begin) != MUSA_SUCCESS)
++            checkErr(CL_OUT_OF_RESOURCES);
++        if (range.created && api.release(range.handle) != MUSA_SUCCESS)
++            checkErr(CL_OUT_OF_RESOURCES);
++    }
++    if (api.free_address(sparse.base, sparse.reserved_bytes) != MUSA_SUCCESS)
++        checkErr(CL_OUT_OF_RESOURCES);
++}
++
++bool populate_sparse_grid(cl_mem h, SparseGrid& sparse, const VmmApi& api,
++                          const MUmemAllocationProp& allocation, const MUmemAccessDesc& access) {
++    for (size_t i = 0; i < sparse.count; ++i) {
++        auto& range = sparse.ranges[i];
++        const size_t bytes = range.end - range.begin;
++        if (api.create(&range.handle, bytes, &allocation, 0) != MUSA_SUCCESS) return false;
++        range.created = true;
++        if (api.map(sparse.base + range.begin, bytes, 0, range.handle, 0) != MUSA_SUCCESS) return false;
++        range.mapped = true;
++        if (api.access(sparse.base + range.begin, bytes, &access, 1) != MUSA_SUCCESS) return false;
++    }
++    const bool copied = copy_grid_headers(*h->headers, [&](size_t offset, size_t bytes, const char* src) {
++        return api.copy(sparse.base + offset, src, bytes) == MUSA_SUCCESS;
++    });
++    // Complete host-to-device DMA before launching or unmapping on fallback.
++    checked(musaStreamSynchronize(nullptr));
++    return copied;
++}
++
++bool use_sparse_grid(cl_mem h, int atom_type, int atom_types) {
++    const GridHeaders& headers = *h->headers;
++    if (!headers.have_common || !std::all_of(headers.have_grid.begin(), headers.have_grid.end(),
++                                             [](bool have) { return have; })) return false;
++
++    int header_atom_type;
++    std::memcpy(&header_atom_type, headers.common.data() + offsetof(grids_cl, atu), sizeof(int));
++    if (atom_types != GRIDS_SIZE || atom_type != header_atom_type) return false;
++
++    std::array<int, 3> dims;
++    std::memcpy(dims.data(), headers.grid[0].data() + offsetof(grid_cl, m_i), 3 * sizeof(int));
++    const int limits[]{MAX_NUM_OF_GRID_MI, MAX_NUM_OF_GRID_MJ, MAX_NUM_OF_GRID_MK};
++    for (size_t axis = 0; axis < dims.size(); ++axis) {
++        if (dims[axis] < 2 || dims[axis] > limits[axis]) return false;
++    }
++    for (const auto& header : headers.grid) {
++        if (std::memcmp(header.data() + offsetof(grid_cl, m_i), dims.data(), 3 * sizeof(int)) != 0)
++            return false;
++    }
++
++    const auto& api = vmm_api();
++    if (!api.available) return false;
++
++    MUmemAllocationProp allocation{};
++    allocation.type = MU_MEM_ALLOCATION_TYPE_PINNED;
++    allocation.location.type = MU_MEM_LOCATION_TYPE_DEVICE;
++    allocation.location.id = 0; // SetupDevice exposes exactly one device.
++    MUmemAccessDesc access{};
++    access.location = allocation.location;
++    access.flags = MU_MEM_ACCESS_FLAGS_PROT_READWRITE;
++
++    size_t page;
++    if (api.granularity(&page, &allocation, MU_MEM_ALLOC_GRANULARITY_MINIMUM) != MUSA_SUCCESS ||
++        page == 0 || page > h->bytes || (page & (page - 1)) != 0) return false;
++    const auto align_up = [page](size_t bytes) { return (bytes + page - 1) & ~(page - 1); };
++
++    auto sparse = std::make_unique<SparseGrid>();
++    sparse->reserved_bytes = align_up(h->bytes);
++    const size_t grid_bytes = static_cast<size_t>(dims[0]) * dims[1] * dims[2] * 8 * sizeof(float);
++    for (size_t type = 0; type < GRIDS_SIZE; ++type) {
++        // Kernel1 writes the entire point prefix, including boundary points.
++        const size_t begin = grid_offset(type) & ~(page - 1);
++        const size_t end = align_up(grid_offset(type) + grid_header_bytes + grid_bytes);
++        if (sparse->count && begin <= sparse->ranges[sparse->count - 1].end) {
++            sparse->ranges[sparse->count - 1].end = end;
++        } else {
++            sparse->ranges[sparse->count++] = {begin, end};
++        }
++    }
++    size_t mapped_bytes = 0;
++    for (size_t i = 0; i < sparse->count; ++i) {
++        const auto& range = sparse->ranges[i];
++        mapped_bytes += range.end - range.begin;
++    }
++    if (mapped_bytes >= h->bytes) return false;
++    if (api.reserve(&sparse->base, sparse->reserved_bytes, page, 0, 0) != MUSA_SUCCESS) return false;
++    if (!populate_sparse_grid(h, *sparse, api, allocation, access)) {
++        free_sparse_grid(*sparse, api);
++        return false;
++    }
++
++    h->ptr = reinterpret_cast<void*>(sparse->base);
++    h->sparse = std::move(sparse);
++    h->headers.reset();
++    record_allocation(h, mapped_bytes);
++    if (profile) std::fprintf(profile, "grid_vmm_mapped_bytes %zu\n", mapped_bytes);
++    return true;
++}
++
++bool usable_range(cl_mem h, size_t offset, size_t bytes) {
++    if (!h->sparse) return true;
++    const auto& grid = *h->sparse;
++    return std::any_of(grid.ranges.begin(), grid.ranges.begin() + grid.count,
++                       [&](const MappedRange& range) { return range.begin <= offset && offset + bytes <= range.end; });
++}
++#endif
++
++void materialize_dense(cl_mem h) {
++    if (h->ptr) return;
++    checked(musaMalloc(&h->ptr, h->bytes));
++    record_allocation(h, h->bytes);
++#ifdef VINA_GRID_VMM
++    if (h->headers) {
++        copy_grid_headers(*h->headers, [&](size_t offset, size_t bytes, const char* src) {
++            checked(musaMemcpy(static_cast<char*>(h->ptr) + offset, src, bytes, musaMemcpyHostToDevice));
++            return true;
++        });
++        h->headers.reset();
++    }
++#endif
++}
++
+ void finish_profile() {
+     if (profile) {
+         std::fprintf(profile,"peak_buffer_bytes %zu\nh2d_bytes %zu\nd2h_bytes %zu\n", peak_bytes, uploaded, downloaded);
+@@ -104,22 +342,42 @@
+     } else return CL_INVALID_VALUE;
+     return CL_SUCCESS;
+ }
+-void CreateDeviceBuffer(cl_mem* handle, cl_mem_flags, size_t size, cl_context) {
+-    void* ptr;
+-    checked(musaMalloc(&ptr, size));
+-    *handle = new _cl_mem{ptr, size};
+-    live_bytes += size;
+-    peak_bytes = std::max(peak_bytes, live_bytes);
++void CreateDeviceBuffer(cl_mem* handle, cl_mem_flags flags, size_t size, cl_context) {
++    auto* h = new _cl_mem{};
++    h->bytes = size;
++    *handle = h;
++#ifdef VINA_GRID_VMM
++    // Confirm this allocation's role with kernel1 argument 4 before mapping it.
++    if (flags == CL_MEM_READ_WRITE && size == sizeof(grids_cl)) {
++        h->headers = std::make_unique<GridHeaders>();
++        return;
++    }
++#endif
++    materialize_dense(h);
+ }
+ cl_int clReleaseMemObject(cl_mem h) {
+-    checked(musaFree(h->ptr));
+-    live_bytes -= h->bytes;
++#ifdef VINA_GRID_VMM
++    if (h->sparse) {
++        checked(musaStreamSynchronize(nullptr));
++        free_sparse_grid(*h->sparse, vmm_api());
++    } else
++#endif
++    if (h->ptr) checked(musaFree(h->ptr));
++    live_bytes -= h->physical_bytes;
+     delete h;
+     return CL_SUCCESS;
+ }
+ cl_int clEnqueueWriteBuffer(cl_command_queue, cl_mem h, cl_bool blocking, size_t offset, size_t bytes,
+                             const void* src, cl_uint n, const cl_event*, cl_event* event) {
+     if (n || event || offset > h->bytes || bytes > h->bytes-offset) return CL_INVALID_VALUE;
++#ifdef VINA_GRID_VMM
++    if (h->headers && !blocking && stage_grid_header(*h->headers, offset, bytes, src)) {
++        uploaded += bytes;
++        return CL_SUCCESS;
++    }
++    if (!usable_range(h, offset, bytes)) return CL_INVALID_VALUE;
++#endif
++    materialize_dense(h);
+     checked(musaMemcpyAsync(static_cast<char*>(h->ptr)+offset, src, bytes, musaMemcpyHostToDevice, nullptr));
+     if (blocking) checked(musaStreamSynchronize(nullptr));
+     uploaded += bytes;
+@@ -128,6 +386,10 @@
+ cl_int clEnqueueReadBuffer(cl_command_queue, cl_mem h, cl_bool blocking, size_t offset, size_t bytes,
+                            void* dst, cl_uint n, const cl_event*, cl_event* event) {
+     if (n || event || offset > h->bytes || bytes > h->bytes-offset) return CL_INVALID_VALUE;
++#ifdef VINA_GRID_VMM
++    if (!usable_range(h, offset, bytes)) return CL_INVALID_VALUE;
++#endif
++    materialize_dense(h);
+     checked(musaMemcpyAsync(dst, static_cast<char*>(h->ptr)+offset, bytes, musaMemcpyDeviceToHost, nullptr));
+     if (blocking) checked(musaStreamSynchronize(nullptr));
+     downloaded += bytes;
+@@ -150,6 +412,16 @@
+         !std::equal(global, global+dims, grid ? g1 : g2) || !std::equal(local, local+dims, grid ? l1 : l2))
+         return CL_INVALID_WORK_GROUP_SIZE;
+     mark(grid ? "submit_grid" : "submit_search");
++#ifdef VINA_GRID_VMM
++    if (grid && k->buffers[4]->headers) {
++        auto* grids = k->buffers[4];
++        if (!use_sparse_grid(grids, k->scalars[0], k->scalars[1])) {
++            materialize_dense(grids);
++            if (profile) std::fprintf(profile, "grid_vmm_mapped_bytes 0\n");
++        }
++    }
++    for (unsigned i = 0; i < (grid ? 7u : 8u); ++i) materialize_dense(k->buffers[i]);
++#endif
+     auto* ev = new _cl_event{};
+     ev->number = k->number;
+     if (profile) {

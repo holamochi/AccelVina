@@ -1,0 +1,24 @@
+{
+  "frozen_record_utc": "2026-11-23T12:11:08.708072+00:00",
+  "commit": "180272b8a5265d6ed9664178345933cebe2cd349",
+  "upstream_source_tree_sha256": "852ed538456d548425c2d93093a2c01a39d4bb6bcdeabab38a8fee075a5f4ac1",
+  "files": {
+    "opt/0001-host-data-preparation.patch": "c6e67f7959d67456c3b5020a6141ba836227adf2354071fb16acbdc8365fb2db",
+    "opt/0002-musa-sparse-grid.patch": "e6dfeb7834c7ac43cf1344b7d7708f46eb0ead32cd3360c2b14239bbe5809222",
+    "opt/0003-musa-grid-diagnostics.patch": "47bda84a3fbc1d03efed37b36421887fdbb5b6827d69f4a98f1388be40aba46d",
+    "port/kernel1.mu": "a4a7f80d0fd1f790a7ab3f856ba43b4a0772480eeabdbbe46fc9c8af863b953c",
+    "port/kernel2.mu": "dd87077415d3ddac8342ad2ad711a4f88e7201a26413eec2942877179053ee65",
+    "port/opencl_device_compat.h": "b0a4d0782220073ca4764ff002b4a6b897eaafe2a7be1bf4edc8849958421540",
+    "port/vina_musa_launch.h": "444b458ffe83ee67916fbbee272e49b42b1f2b02eab66c4623b63d4bf503f105",
+    "runtime/musa_backend.cpp": "31907a37b091bd1c29d3d5bee94daf976047a2f8e841f5968d104b5762ca8f5c",
+    "bench/isolated.py": "37629841781b616e946b7ca9d55d76886a1e5357c6ca989f362a755c25089f97",
+    "bench/run_benchmark.py": "9e693bb29dc2b0c62b20b80fe92aa1ece0df2b386bb3c2607f845200d13d0626",
+    "build.sh": "bd7c820d11de937db78dcc7134635cfc2a97924f4ce626e7b57d73b96df0ffe4",
+    "prepare_boost.sh": "8acd1f13454fe4a4e6e67c94093a02f621dac801cbdd99212fc67725508a5bb1",
+    "build.mk": "b164df9bf09c36cb1ab9597968eb25c50180dfc2b7c1cb5a5af11de9a6353b9d"
+  },
+  "baseline_elf": "f94a2c4ade96dbe3c75a5c962ac61ea119db5bb73b2dfd4791888ef84322b709",
+  "candidate_elf": "88dc8708e255b3f72da488e5ab1208048f3890f13a7066700d9bd0cfce6c2a39",
+  "warning_replay": "On a nonzero grid warning mask, run the original grid kernel on the same stream before docking.",
+  "holdout": "Previous candidate was withdrawn during the demo round. No final case had run. This manifest precedes final evaluation."
+}

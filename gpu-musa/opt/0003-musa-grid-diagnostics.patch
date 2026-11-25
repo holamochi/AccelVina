@@ -1,0 +1,200 @@
+--- a/src/OpenCL/src/kernels/kernel1.cl
++++ b/src/OpenCL/src/kernels/kernel1.cl
+@@ -1,3 +1,12 @@
++enum grid_error {
++	grid_error_atom_typing = 1u << 0,
++	grid_error_type_pair = 1u << 1,
++	grid_error_precalculation = 1u << 2,
++	grid_error_probe_bounds = 1u << 3,
++	grid_error_affinity_count = 1u << 4,
++	grid_error_needed_type = 1u << 5
++};
++
+ int fl_to_sz(float x, float max_sz) {
+ 	if (x <= 0) return 0;
+ 	if (x >= max_sz) return max_sz;
+@@ -9,7 +18,7 @@
+ 	case 1: return AD_TYPE_SIZE;
+ 	case 2: return XS_TYPE_SIZE;
+ 	case 3: return SY_TYPE_SIZE;
+-	default: printf("\nkernel1:num_atom_types ERROR!"); return INFINITY;
++	default: return 0;
+ 	}
+ }
+ 
+@@ -18,8 +27,7 @@
+ }
+ 
+ const int triangular_matrix_index(int n, int i, int j) {
+-	if (j >= n) printf("\nkernel1:triangular_matrix_index ERROR!");
+-	if (i > j) printf("\nkernel1:triangular_matrix_index ERROR!");
++	if (i < 0 || j >= n || i > j) return -1;
+ 	return i + j * (j + 1) / 2;
+ }
+ 
+@@ -27,11 +35,17 @@
+ 	return (i <= j) ? triangular_matrix_index(n, i, j) : triangular_matrix_index(n, j, i);
+ }
+ 
+-float eval_fast(int type_pair_index, float r2, float cutoff_sqr, const __global pre_cl* pre) {
+-	if (r2 > cutoff_sqr) printf("\nkernel1:eval_fast ERROR!");
+-	if (r2 * pre->factor >= FAST_SIZE)printf("\nkernel1:eval_fast ERROR!");
++float eval_fast(int type_pair_index, float r2, float cutoff_sqr, const __global pre_cl* pre,
++				__global unsigned int* errors) {
++	if (r2 > cutoff_sqr || r2 * pre->factor >= FAST_SIZE) {
++		atomicOr(errors, grid_error_precalculation);
++		return 0;
++	}
+ 	int i = (int)(pre->factor * r2);
+-	if (i >= FAST_SIZE)printf("\nkernel1:eval_fast ERROR!");
++	if (i < 0 || i >= FAST_SIZE) {
++		atomicOr(errors, grid_error_precalculation);
++		return 0;
++	}
+ 	float res = pre->m_data[type_pair_index].fast[i];
+ 	return res;
+ }
+@@ -41,14 +55,18 @@
+ 												const				float		epsilon_fl, 
+ 												const	__global	gb_cl*		gb,
+ 																	int*		relation_count,
+-												const	__global	mis_cl*		mis
++												const	__global	mis_cl*		mis,
++												__global unsigned int* errors
+ ) {
+ 	int index[3];
+ 	float temp_array[3];
+ 	int m_data_dims[3] = { mis->ar_mi, mis->ar_mj, mis->ar_mk };
+ 	for (int i = 0; i < 3; i++) {
+-		if (coords[i] + epsilon_fl < gb->init[i]) printf("\nkernel1:possibilities ERROR!1 coords = %f,  init = %f", coords[i], gb->init[i]);//replace assert()
+-		if (coords[i] > gb->init[i] + gb->range[i] + epsilon_fl) printf("\nkernel1:possibilities ERROR!2 coords = %f,  init = %f, range =%f", coords[i], gb->init[i], gb->range[i]);//replace assert()
++		if (coords[i] + epsilon_fl < gb->init[i] ||
++		    coords[i] > gb->init[i] + gb->range[i] + epsilon_fl) {
++			atomicOr(errors, grid_error_probe_bounds);
++			return 0;
++		}
+ 		const float tmp = (coords[i] - gb->init[i]) * m_data_dims[i] / gb->range[i];
+ 		temp_array[i] = tmp;
+ 		index[i] = fl_to_sz(tmp, m_data_dims[i] - 1);
+@@ -71,19 +89,28 @@
+ 				const		__global		mis_cl*		mis,
+ 				const		__global		float*		needed,
+ 				const						int			atu,
+-				const						int			nat
++				const						int			nat,
++				__global unsigned int* errors
+ ) {
+ 	int x = get_global_id(0);
+ 	int y = get_global_id(1);
+ 	int z = get_global_id(2);
+ 	int grids_front = mis->grids_front;
+ 
+-	//printf("here!");
+ 	if (x >=grids->grids[grids_front].m_i)return;
+ 	if (y >=grids->grids[grids_front].m_j)return;
+ 	if (z >=grids->grids[grids_front].m_k)return;
+ 	
+-	float affinities[17]; if (mis->needed_size > 17) printf("\nkernel1: ERROR!");
++	const int type_count = num_atom_types(atu);
++	if (type_count == 0) {
++		atomicOr(errors, grid_error_atom_typing);
++		return;
++	}
++	float affinities[17];
++	if (mis->needed_size > 17) {
++		atomicOr(errors, grid_error_affinity_count);
++		return;
++	}
+ 	for (int i = 0; i < mis->needed_size; i++) affinities[i] = 0;
+ 
+ 	float probe_coords[3] = {	grids->grids[grids_front].m_init[0] + grids->grids[grids_front].m_factor_inv[0] * x,
+@@ -91,7 +118,8 @@
+ 								grids->grids[grids_front].m_init[2] + grids->grids[grids_front].m_factor_inv[2] * z };
+ 	int relation_count;
+ 
+-	const __global int* possibilities_ptr = possibilities(probe_coords, ar, mis->epsilon_fl, gb, &relation_count, mis);
++	const __global int* possibilities_ptr = possibilities(probe_coords, ar, mis->epsilon_fl, gb, &relation_count, mis, errors);
++	if (!possibilities_ptr) return;
+ 
+ 	for (int possibilities_i = 0; possibilities_i < relation_count; possibilities_i++) {
+ 		const int i = possibilities_ptr[possibilities_i];
+@@ -102,16 +130,28 @@
+ 
+ 		if (r2 <= mis->cutoff_sqr) {
+ 			for (int j = 0; j < mis->needed_size; j++) {
+-				const int t2 = needed[j]; if (t2 >= nat) printf("\nkernel1: ERROR!1 t2 = %d,nat=%d", t2, nat);
+-				const int type_pair_index = triangular_matrix_index_permissive(num_atom_types(atu), t1, t2);
+-				affinities[j] += eval_fast(type_pair_index, r2, mis->cutoff_sqr, pre);
++				const int t2 = needed[j];
++				if (t2 < 0 || t2 >= nat) {
++					atomicOr(errors, grid_error_needed_type);
++					return;
++				}
++				const int type_pair_index = triangular_matrix_index_permissive(type_count, t1, t2);
++				if (type_pair_index < 0) {
++					atomicOr(errors, grid_error_type_pair);
++					return;
++				}
++				affinities[j] += eval_fast(type_pair_index, r2, mis->cutoff_sqr, pre, errors);
+ 			}
+ 		}
+ 	}
+ 
+ 
+ 	for (int j = 0; j < mis->needed_size; j++) {
+-		int t = needed[j]; if (t >= nat)printf("\nkernel1: ERROR!2 t = %d,nat=%d",t,nat);
++		int t = needed[j];
++		if (t < 0 || t >= nat) {
++			atomicOr(errors, grid_error_needed_type);
++			return;
++		}
+ 		int mi = grids->grids[t].m_i;
+ 		int mj = grids->grids[t].m_j;
+ 
+--- a/port/kernel1.mu
++++ b/port/kernel1.mu
+@@ -8,15 +8,38 @@
+ 
+ } // namespace
+ 
++extern "C" decltype(vina_musa_launch_kernel1) vina_musa_launch_kernel1_reference;
++
+ extern "C" int vina_musa_launch_kernel1(const void* pre, const void* pa,
+                                          const void* gb, const void* ar,
+                                          void* grids, const void* mis,
+                                          const void* needed, int atu, int nat,
+                                          void* stream) {
+-    kernel1<<<dim3(32, 32, 32), dim3(4, 4, 4), 0, static_cast<musaStream_t>(stream)>>>(
+-        static_cast<const pre_cl*>(pre), static_cast<const pa_cl*>(pa),
+-        static_cast<const gb_cl*>(gb), static_cast<const ar_cl*>(ar),
+-        static_cast<grids_cl*>(grids), static_cast<const mis_cl*>(mis),
+-        static_cast<const float*>(needed), atu, nat);
+-    return musaGetLastError();
++    const auto native_stream = static_cast<musaStream_t>(stream);
++    unsigned int* device_errors = nullptr;
++    auto status = musaMalloc(reinterpret_cast<void**>(&device_errors), sizeof(*device_errors));
++    if (status != musaSuccess) return status;
++
++    status = musaMemsetAsync(device_errors, 0, sizeof(*device_errors), native_stream);
++    if (status == musaSuccess) {
++        kernel1<<<dim3(32, 32, 32), dim3(4, 4, 4), 0, native_stream>>>(
++            static_cast<const pre_cl*>(pre), static_cast<const pa_cl*>(pa),
++            static_cast<const gb_cl*>(gb), static_cast<const ar_cl*>(ar),
++            static_cast<grids_cl*>(grids), static_cast<const mis_cl*>(mis),
++            static_cast<const float*>(needed), atu, nat, device_errors);
++        status = musaGetLastError();
++    }
++    unsigned int errors = 0;
++    if (status == musaSuccess)
++        status = musaMemcpyAsync(&errors, device_errors, sizeof(errors), musaMemcpyDeviceToHost, native_stream);
++    if (status == musaSuccess)
++        status = musaStreamSynchronize(native_stream);
++    const auto release_status = musaFree(device_errors);
++    if (status != musaSuccess) return status;
++    if (release_status != musaSuccess) return release_status;
++    if (errors != 0) {
++        // Upstream continues after some warnings, so replay the full grid on this stream.
++        return vina_musa_launch_kernel1_reference(pre, pa, gb, ar, grids, mis, needed, atu, nat, stream);
++    }
++    return musaSuccess;
+ }
